@@ -28,6 +28,7 @@ export default class LayoutEditor extends St.Widget {
     private _outerGaps: Clutter.Margin;
     private _hoverWidget: HoverLine;
     private _sliders: Slider[];
+    private _editableTiles: EditableTilePreview[];
 
     private _minimizedWindows: Meta.Window[];
 
@@ -55,6 +56,7 @@ export default class LayoutEditor extends St.Widget {
         this._innerGaps = buildMargin(Settings.get_inner_gaps());
         this._outerGaps = buildMargin(Settings.get_outer_gaps());
         this._sliders = [];
+        this._editableTiles = [];
         this._containerRect = buildRectangle({
             x: 0,
             y: 0,
@@ -86,6 +88,7 @@ export default class LayoutEditor extends St.Widget {
         // cleanup
         this.destroy_all_children();
         this._sliders = [];
+        this._editableTiles = [];
         this._hoverWidget = new HoverLine(this);
 
         // change layout
@@ -94,13 +97,67 @@ export default class LayoutEditor extends St.Widget {
         this._drawEditor();
     }
 
+    public addOverlappingTile(xNorm?: number, yNorm?: number) {
+        const width = 0.5;
+        const height = 0.5;
+        let x = xNorm !== undefined ? xNorm - width / 2 : 0.25;
+        let y = yNorm !== undefined ? yNorm - height / 2 : 0.25;
+        x = Math.max(0, Math.min(1 - width, x));
+        y = Math.max(0, Math.min(1 - height, y));
+
+        const tile = new Tile({
+            x,
+            y,
+            width,
+            height,
+            groups: [],
+        });
+
+        const rect = TileUtils.apply_props(tile, this._containerRect);
+        this._layout.tiles.push(tile);
+        const editableTile = this._buildEditableTile(tile, rect);
+        this._editableTiles.push(editableTile);
+        this._ensureSlidersOnTop();
+    }
+
+    public cycleTileLayer(clickedTile: EditableTilePreview) {
+        const [stageX, stageY] = Shell.Global.get().get_pointer();
+        const relX = stageX - this.x;
+        const relY = stageY - this.y;
+
+        const overlapping = this._editableTiles.filter((t) => {
+            return (
+                relX >= t.x &&
+                relX <= t.x + t.width &&
+                relY >= t.y &&
+                relY <= t.y + t.height
+            );
+        });
+
+        if (overlapping.length <= 1) return;
+
+        const currentIndex = overlapping.indexOf(clickedTile);
+        const nextIndex = (currentIndex + 1) % overlapping.length;
+        const nextTile = overlapping[nextIndex];
+        this.set_child_above_sibling(nextTile, clickedTile);
+        this._ensureSlidersOnTop();
+    }
+
+    private _ensureSlidersOnTop() {
+        for (const slider of this._sliders) {
+            this.set_child_above_sibling(slider, null);
+        }
+    }
+
     private _drawEditor() {
         const groups = new Map<number, EditableTilePreview[]>();
+        this._editableTiles = [];
 
         // render layout's tile and group tiles
         this._layout.tiles.forEach((tile) => {
             const rect = TileUtils.apply_props(tile, this._containerRect);
             const prev = this._buildEditableTile(tile, rect);
+            this._editableTiles.push(prev);
             tile.groups.forEach((id) => {
                 if (!groups.has(id)) groups.set(id, []);
                 groups.get(id)?.push(prev);
@@ -166,10 +223,17 @@ export default class LayoutEditor extends St.Widget {
                     }
                 }
             }
+
+            if (coord === -1) {
+                return;
+            }
+
             const slider = this._buildSlider(horizontal, coord, groupdId);
             this._sliders.push(slider);
             tiles.forEach((editable) => slider.addTile(editable));
         });
+
+        this._ensureSlidersOnTop();
     }
 
     private _buildEditableTile(
@@ -191,13 +255,37 @@ export default class LayoutEditor extends St.Widget {
         });
         editableTile.open();
         editableTile.connect('clicked', (_, clicked_button: number) => {
-            // St.ButtonMask.ONE is left click. 3 is right click (but for some reason St.ButtonMask.THREE is equal to 4, so we cannot use it)
-            if (clicked_button === St.ButtonMask.ONE)
-                this.splitTile(editableTile);
-            else if (clicked_button === 3) this.deleteTile(editableTile);
+            const [, , modifier] = global.get_pointer();
+            const shiftPressed =
+                (modifier & Clutter.ModifierType.SHIFT_MASK) !== 0;
+
+            if (clicked_button === 1) {
+                if (shiftPressed) {
+                    const [x, y] = global.get_pointer();
+                    this.addOverlappingTile(
+                        (x - this.x) / this._containerRect.width,
+                        (y - this.y) / this._containerRect.height,
+                    );
+                } else {
+                    this.splitTile(editableTile);
+                }
+            } else if (clicked_button === 2) {
+                this.cycleTileLayer(editableTile);
+            } else if (clicked_button === 3) {
+                this.deleteTile(editableTile);
+            }
         });
         editableTile.connect('motion-event', (_, event: Clutter.Event) => {
             const [stageX, stageY] = getEventCoords(event);
+            if (
+                editableTile.isNearEdge(
+                    stageX - editableTile.x,
+                    stageY - editableTile.y,
+                )
+            ) {
+                this._hoverWidget.hide();
+                return Clutter.EVENT_PROPAGATE;
+            }
             this._hoverWidget.handleMouseMove(
                 editableTile,
                 stageX - this.x,
@@ -207,6 +295,15 @@ export default class LayoutEditor extends St.Widget {
         });
         editableTile.connect('notify::hover', () => {
             const [stageX, stageY] = Shell.Global.get().get_pointer();
+            if (
+                editableTile.isNearEdge(
+                    stageX - editableTile.x,
+                    stageY - editableTile.y,
+                )
+            ) {
+                this._hoverWidget.hide();
+                return;
+            }
             this._hoverWidget.handleMouseMove(
                 editableTile,
                 stageX - this.x,
@@ -265,6 +362,10 @@ export default class LayoutEditor extends St.Widget {
 
         const prevEditableTile = this._buildEditableTile(prevTile, prevRect);
         const nextEditableTile = this._buildEditableTile(nextTile, nextRect);
+        this._editableTiles = this._editableTiles.filter(
+            (t) => t !== editableTile,
+        );
+        this._editableTiles.push(prevEditableTile, nextEditableTile);
 
         const slider = this._buildSlider(
             splitHorizontally,
@@ -318,9 +419,12 @@ export default class LayoutEditor extends St.Widget {
 
         this._hoverWidget.handleTileDestroy(editableTile);
         editableTile.destroy();
+        this._ensureSlidersOnTop();
     }
 
     private deleteTile(editableTile: EditableTilePreview) {
+        if (this._layout.tiles.length <= 1) return;
+
         for (const slider of editableTile.getAllSliders()) {
             if (slider === null) continue;
 
@@ -334,12 +438,27 @@ export default class LayoutEditor extends St.Widget {
                     (tile) => tile !== editableTile.tile,
                 );
                 this._sliders = this._sliders.filter((sl) => sl !== slider);
+                this._editableTiles = this._editableTiles.filter(
+                    (t) => t !== editableTile,
+                );
                 this._hoverWidget.handleTileDestroy(editableTile);
                 editableTile.destroy();
                 slider.destroy();
+                this._ensureSlidersOnTop();
                 return;
             }
         }
+
+        editableTile.detachFromAllSliders();
+        this._layout.tiles = this._layout.tiles.filter(
+            (tile) => tile !== editableTile.tile,
+        );
+        this._editableTiles = this._editableTiles.filter(
+            (t) => t !== editableTile,
+        );
+        this._hoverWidget.handleTileDestroy(editableTile);
+        editableTile.destroy();
+        this._ensureSlidersOnTop();
     }
 
     private _buildSlider(

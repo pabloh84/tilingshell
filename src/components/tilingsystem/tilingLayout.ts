@@ -166,20 +166,74 @@ export default class TilingLayout extends LayoutWidget<DynamicTilePreview> {
         currPointerPos: { x: number; y: number },
         reset: boolean,
     ): Mtk.Rectangle | undefined {
-        let found = this._previews.find((preview) =>
+        let candidates = this._previews.filter((preview) =>
             this._isHovered(currPointerPos, preview.rect),
         );
-        if (!found || (!found.canRestore && reset)) {
-            found = this._previews.find(
+        if (
+            candidates.length === 0 ||
+            (!candidates.some((c) => c.canRestore) && reset)
+        ) {
+            candidates = this._previews.filter(
                 (preview) =>
                     preview.canRestore &&
                     this._isHovered(currPointerPos, preview.originalRect),
             );
         }
-        if (!found) return undefined;
+        if (candidates.length === 0) return undefined;
 
-        if (reset && found.originalRect) return found.originalRect;
-        return found.rect;
+        let bestCandidate = candidates[0];
+        const bestRect =
+            reset && bestCandidate.canRestore
+                ? bestCandidate.originalRect
+                : bestCandidate.rect;
+        let bestDistance = squaredEuclideanDistance(
+            {
+                x: bestRect.x + bestRect.width / 2,
+                y: bestRect.y + bestRect.height / 2,
+            },
+            currPointerPos,
+        );
+
+        for (let i = 1; i < candidates.length; i++) {
+            const candidate = candidates[i];
+            const r =
+                reset && candidate.canRestore
+                    ? candidate.originalRect
+                    : candidate.rect;
+            const center = {
+                x: r.x + r.width / 2,
+                y: r.y + r.height / 2,
+            };
+            const dist = squaredEuclideanDistance(center, currPointerPos);
+            const currentBestR =
+                reset && bestCandidate.canRestore
+                    ? bestCandidate.originalRect
+                    : bestCandidate.rect;
+            if (
+                dist < bestDistance ||
+                (Math.abs(dist - bestDistance) < 100 &&
+                    r.area() < currentBestR.area())
+            ) {
+                bestCandidate = candidate;
+                bestDistance = dist;
+            }
+        }
+
+        if (reset && bestCandidate.originalRect)
+            return bestCandidate.originalRect;
+        return bestCandidate.rect;
+    }
+
+    public hasOverlappingTiles(): boolean {
+        for (let i = 0; i < this._previews.length; i++) {
+            for (let j = i + 1; j < this._previews.length; j++) {
+                const [intersects] = this._previews[i].rect.intersect(
+                    this._previews[j].rect,
+                );
+                if (intersects) return true;
+            }
+        }
+        return false;
     }
 
     public unhoverAllTiles() {
@@ -197,6 +251,25 @@ export default class TilingLayout extends LayoutWidget<DynamicTilePreview> {
     }
 
     public hoverTilesInRect(rect: Mtk.Rectangle, reset: boolean) {
+        if (this.hasOverlappingTiles()) {
+            this._previews.forEach((preview) => {
+                const [hasIntersection, intersection] =
+                    preview.rect.intersect(rect);
+                if (
+                    hasIntersection &&
+                    intersection.area() >= preview.rect.area() * 0.85
+                ) {
+                    preview.close();
+                } else if (reset) {
+                    preview.restore(true);
+                    preview.open(undefined, true);
+                } else {
+                    preview.open(undefined, true);
+                }
+            });
+            return;
+        }
+
         const newPreviewsArray: DynamicTilePreview[] = [];
 
         this._previews.forEach((preview) => {
@@ -241,7 +314,7 @@ export default class TilingLayout extends LayoutWidget<DynamicTilePreview> {
                         rectangles[maxIndex].union(
                             preview.rect.intersect(rect)[1],
                         ),
-                        false
+                        false,
                     );
                     preview.open(rectangles[maxIndex], true);
                     newPreviewsArray.push(preview);
@@ -427,19 +500,34 @@ export default class TilingLayout extends LayoutWidget<DynamicTilePreview> {
         });
         global.windowGroup.add_child(debugWidget);*/
 
+        const candidates: { preview: DynamicTilePreview; distance: number }[] =
+            [];
         for (let i = 0; i < this._previews.length; i++) {
             const previewFound = this._previews[i];
             if (isPointInsideRect(sourceCoords, previewFound.rect)) {
-                return {
-                    rect: buildRectangle({
-                        x: previewFound.innerX,
-                        y: previewFound.innerY,
-                        width: previewFound.innerWidth,
-                        height: previewFound.innerHeight,
-                    }),
-                    tile: previewFound.tile,
+                const center = {
+                    x: previewFound.innerX + previewFound.innerWidth / 2,
+                    y: previewFound.innerY + previewFound.innerHeight / 2,
                 };
+                candidates.push({
+                    preview: previewFound,
+                    distance: squaredEuclideanDistance(center, sourceCoords),
+                });
             }
+        }
+
+        if (candidates.length > 0) {
+            candidates.sort((a, b) => a.distance - b.distance);
+            const previewFound = candidates[0].preview;
+            return {
+                rect: buildRectangle({
+                    x: previewFound.innerX,
+                    y: previewFound.innerY,
+                    width: previewFound.innerWidth,
+                    height: previewFound.innerHeight,
+                }),
+                tile: previewFound.tile,
+            };
         }
 
         return undefined;

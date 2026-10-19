@@ -106,6 +106,7 @@ export default class Settings {
     static KEY_RAISE_TOGETHER = 'raise-together';
     static KEY_RAISE_TOGETHER_CURRENT_MONITOR_ONLY =
         'raise-together-current-monitor-only';
+
     static KEY_ACTIVE_SCREEN_EDGES = 'active-screen-edges';
     static KEY_TOP_EDGE_MAXIMIZE = 'top-edge-maximize';
     static KEY_OVERRIDE_WINDOW_MENU = 'override-window-menu';

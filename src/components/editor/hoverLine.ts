@@ -42,6 +42,10 @@ export default class HoverLine extends St.Widget {
         this._hoveredTile = tile;
 
         const modifier = Shell.Global.get().get_pointer()[2];
+        if ((modifier & Clutter.ModifierType.SHIFT_MASK) !== 0) {
+            this.hide();
+            return;
+        }
 
         // split horizontally when CTRL is NOT pressed, split vertically instead
         const splitHorizontally =
@@ -59,6 +63,11 @@ export default class HoverLine extends St.Widget {
         }
 
         const [x, y, modifier] = global.get_pointer();
+        if ((modifier & Clutter.ModifierType.SHIFT_MASK) !== 0) {
+            this.hide();
+            return GLib.SOURCE_CONTINUE;
+        }
+
         // split horizontally when CTRL is NOT pressed, split vertically instead
         const splitHorizontally =
             (modifier & Clutter.ModifierType.CONTROL_MASK) === 0;

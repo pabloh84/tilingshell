@@ -173,6 +173,107 @@ export default class EditorDialog extends ModalDialog.ModalDialog {
             }),
         );
 
+        const suggestionOverlap = new St.BoxLayout();
+        suggestionOverlap.add_child(
+            new St.Label({
+                text: 'SHIFT',
+                xAlign: Clutter.ActorAlign.CENTER,
+                yAlign: Clutter.ActorAlign.CENTER,
+                styleClass: 'button kbd',
+                xExpand: false,
+                pseudoClass: 'active',
+            }),
+        );
+        suggestionOverlap.add_child(
+            new St.Label({
+                text: ' + ',
+                xAlign: Clutter.ActorAlign.CENTER,
+                yAlign: Clutter.ActorAlign.CENTER,
+                styleClass: '',
+                xExpand: false,
+            }),
+        );
+        suggestionOverlap.add_child(
+            new St.Label({
+                text: 'LEFT CLICK',
+                xAlign: Clutter.ActorAlign.CENTER,
+                yAlign: Clutter.ActorAlign.CENTER,
+                styleClass: 'button kbd',
+                xExpand: false,
+                pseudoClass: 'active',
+            }),
+        );
+        suggestionOverlap.add_child(
+            new St.Label({
+                text: ` ${_('to add an overlapping tile')}.`,
+                xAlign: Clutter.ActorAlign.CENTER,
+                yAlign: Clutter.ActorAlign.CENTER,
+                styleClass: '',
+                xExpand: false,
+            }),
+        );
+
+        const suggestionFreeDrag = new St.BoxLayout();
+        suggestionFreeDrag.add_child(
+            new St.Label({
+                text: 'SHIFT',
+                xAlign: Clutter.ActorAlign.CENTER,
+                yAlign: Clutter.ActorAlign.CENTER,
+                styleClass: 'button kbd',
+                xExpand: false,
+                pseudoClass: 'active',
+            }),
+        );
+        suggestionFreeDrag.add_child(
+            new St.Label({
+                text: ' + ',
+                xAlign: Clutter.ActorAlign.CENTER,
+                yAlign: Clutter.ActorAlign.CENTER,
+                styleClass: '',
+                xExpand: false,
+            }),
+        );
+        suggestionFreeDrag.add_child(
+            new St.Label({
+                text: 'DRAG',
+                xAlign: Clutter.ActorAlign.CENTER,
+                yAlign: Clutter.ActorAlign.CENTER,
+                styleClass: 'button kbd',
+                xExpand: false,
+                pseudoClass: 'active',
+            }),
+        );
+        suggestionFreeDrag.add_child(
+            new St.Label({
+                text: ` ${_('to move or resize tiles freely')}.`,
+                xAlign: Clutter.ActorAlign.CENTER,
+                yAlign: Clutter.ActorAlign.CENTER,
+                styleClass: '',
+                xExpand: false,
+            }),
+        );
+
+        const suggestionMiddleClick = new St.BoxLayout();
+        suggestionMiddleClick.add_child(
+            new St.Label({
+                text: 'MIDDLE CLICK',
+                xAlign: Clutter.ActorAlign.CENTER,
+                yAlign: Clutter.ActorAlign.CENTER,
+                styleClass: 'button kbd',
+                xExpand: false,
+                pseudoClass: 'active',
+            }),
+        );
+        suggestionMiddleClick.add_child(
+            new St.Label({
+                text: ` ${_('to cycle overlapping tile layers')}.`,
+                xAlign: Clutter.ActorAlign.CENTER,
+                yAlign: Clutter.ActorAlign.CENTER,
+                styleClass: '',
+                xExpand: false,
+            }),
+        );
+
         const suggestion4 = new St.BoxLayout({
             xExpand: true,
             margin_top: 16,
@@ -206,6 +307,9 @@ export default class EditorDialog extends ModalDialog.ModalDialog {
         legend.add_child(suggestion1);
         legend.add_child(suggestion2);
         legend.add_child(suggestion3);
+        legend.add_child(suggestionOverlap);
+        legend.add_child(suggestionFreeDrag);
+        legend.add_child(suggestionMiddleClick);
         legend.add_child(suggestion4);
 
         this.contentLayout.destroy_all_children();

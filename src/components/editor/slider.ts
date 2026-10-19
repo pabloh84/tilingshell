@@ -207,6 +207,51 @@ export default class Slider extends St.Button {
         }
     }
 
+    public detachTile(tile: EditableTilePreview) {
+        const isNext = this._nextTiles.includes(tile);
+        const array = isNext ? this._nextTiles : this._previousTiles;
+        const index = array.indexOf(tile);
+        if (index < 0) return;
+        array.splice(index, 1);
+
+        const sig = this._signals.get(tile);
+        if (sig) {
+            sig.forEach((id) => tile.disconnect(id));
+            this._signals.delete(tile);
+        }
+
+        const side = this._horizontalDir
+            ? isNext
+                ? St.Side.LEFT
+                : St.Side.RIGHT
+            : isNext
+              ? St.Side.TOP
+              : St.Side.BOTTOM;
+        tile.removeSlider(side);
+
+        if (this._previousTiles.length === 0 && this._nextTiles.length === 0) {
+            this.destroy();
+            return;
+        }
+
+        this._minTileCoord = Number.MAX_VALUE;
+        this._maxTileCoord = Number.MIN_VALUE;
+        const allTiles = [...this._previousTiles, ...this._nextTiles];
+        for (const t of allTiles) {
+            this._minTileCoord = Math.min(
+                this._minTileCoord,
+                this._horizontalDir ? t.rect.y : t.rect.x,
+            );
+            this._maxTileCoord = Math.max(
+                this._maxTileCoord,
+                this._horizontalDir
+                    ? t.rect.y + t.rect.height
+                    : t.rect.x + t.rect.width,
+            );
+        }
+        this._updatePosition();
+    }
+
     public onTileSplit(
         tileToRemove: EditableTilePreview,
         newTiles: EditableTilePreview[],

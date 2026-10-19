@@ -126,9 +126,27 @@ export default class OverriddenWindowMenu extends GObject.Object {
         ).tiles;
         const vacantTiles = tiles.filter((t) => {
             const tileRect = TileUtils.apply_props(t, workArea);
-            return !tiledWindows.find((win) =>
-                tileRect.overlap(win.get_frame_rect()),
-            );
+            return !tiledWindows.find((win) => {
+                if (win.assignedTile) {
+                    const at = win.assignedTile;
+                    if (
+                        Math.abs(at.x - t.x) < 0.02 &&
+                        Math.abs(at.y - t.y) < 0.02 &&
+                        Math.abs(at.width - t.width) < 0.02 &&
+                        Math.abs(at.height - t.height) < 0.02
+                    ) {
+                        return true;
+                    }
+                }
+                const [intersects, intersection] = tileRect.intersect(
+                    win.get_frame_rect(),
+                );
+                if (!intersects) return false;
+                const ratio =
+                    intersection.area() /
+                    Math.min(tileRect.area(), win.get_frame_rect().area());
+                return ratio >= 0.85;
+            });
         });
 
         const enableScaling =

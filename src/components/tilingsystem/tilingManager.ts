@@ -8,7 +8,6 @@ import {
     getMonitorScalingFactor,
     getScalingFactorOf,
     getWindows,
-    isPointInsideRect,
     isTileOnContainerBorder,
     squaredEuclideanDistance,
 } from '../../utils/ui';
@@ -861,18 +860,19 @@ export class TilingManager {
             this._snapAssistingInfo.update(undefined);
         }
 
-        // if the pointer is inside the current selection and ALT key status is not changed, then there is nothing to do
-        if (
-            !changedSpanMultipleTiles &&
-            isPointInsideRect(currPointerPos, this._selectedTilesPreview.rect)
-        )
-            return GLib.SOURCE_CONTINUE;
-
         let selectionRect = tilingLayout.getTileBelow(
             currPointerPos,
             changedSpanMultipleTiles && !allowSpanMultipleTiles,
         );
         if (!selectionRect) return GLib.SOURCE_CONTINUE;
+
+        // if the selection tile has not changed and ALT key status is not changed, then there is nothing to do
+        if (
+            !changedSpanMultipleTiles &&
+            this._selectedTilesPreview.showing &&
+            selectionRect.equal(this._selectedTilesPreview.rect)
+        )
+            return GLib.SOURCE_CONTINUE;
 
         selectionRect = selectionRect.copy();
         if (allowSpanMultipleTiles && this._selectedTilesPreview.showing) {
@@ -1413,9 +1413,27 @@ export class TilingManager {
         );
         const vacantTiles = tiles.filter((t) => {
             const tileRect = TileUtils.apply_props(t, workArea);
-            return !tiledWindows.find((win) =>
-                tileRect.overlap(win.get_frame_rect()),
-            );
+            return !tiledWindows.find((win) => {
+                if (win.assignedTile) {
+                    const at = win.assignedTile;
+                    if (
+                        Math.abs(at.x - t.x) < 0.02 &&
+                        Math.abs(at.y - t.y) < 0.02 &&
+                        Math.abs(at.width - t.width) < 0.02 &&
+                        Math.abs(at.height - t.height) < 0.02
+                    ) {
+                        return true;
+                    }
+                }
+                const [intersects, intersection] = tileRect.intersect(
+                    win.get_frame_rect(),
+                );
+                if (!intersects) return false;
+                const ratio =
+                    intersection.area() /
+                    Math.min(tileRect.area(), win.get_frame_rect().area());
+                return ratio >= 0.85;
+            });
         });
 
         if (vacantTiles.length === 0) return undefined;

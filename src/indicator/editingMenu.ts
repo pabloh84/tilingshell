@@ -27,6 +27,17 @@ export default class EditingMenu implements CurrentMenu {
         openMenuBtn.connect('clicked', () => this._indicator.openMenu(false));
         boxLayout.add_child(openMenuBtn);
 
+        const addTileBtn = createButton(
+            'add-symbolic',
+            _('Add Tile'),
+            this._indicator.path,
+        );
+        addTileBtn.connect('clicked', () => {
+            this._indicator.menu.toggle();
+            this._indicator.addOverlappingTileOnClick();
+        });
+        boxLayout.add_child(addTileBtn);
+
         const infoMenuBtn = createButton(
             'info-symbolic',
             _('Info'),

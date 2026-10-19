@@ -42,6 +42,8 @@ export default class SnapAssistLayout extends LayoutWidget<SnapAssistTile> {
         y: number;
     }): SnapAssistTile | undefined {
         const [x, y] = this.get_transformed_position();
+        let bestTile: SnapAssistTile | undefined;
+        let bestDist = Number.MAX_VALUE;
 
         for (let i = 0; i < this._previews.length; i++) {
             const preview = this._previews[i];
@@ -52,9 +54,26 @@ export default class SnapAssistLayout extends LayoutWidget<SnapAssistTile> {
                 cursorPos.x <= pos.x + preview.rect.width &&
                 cursorPos.y >= pos.y &&
                 cursorPos.y <= pos.y + preview.rect.height;
-            if (isHovering) return preview;
+            if (isHovering) {
+                const center = {
+                    x: pos.x + preview.rect.width / 2,
+                    y: pos.y + preview.rect.height / 2,
+                };
+                const dist =
+                    (cursorPos.x - center.x) ** 2 +
+                    (cursorPos.y - center.y) ** 2;
+                if (
+                    dist < bestDist ||
+                    (Math.abs(dist - bestDist) < 25 &&
+                        bestTile &&
+                        preview.rect.area() < bestTile.rect.area())
+                ) {
+                    bestTile = preview;
+                    bestDist = dist;
+                }
+            }
         }
 
-        return undefined;
+        return bestTile;
     }
 }

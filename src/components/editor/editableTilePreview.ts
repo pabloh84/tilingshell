@@ -1,10 +1,97 @@
 import TilePreview from '../tilepreview/tilePreview';
-import { St, Clutter, Mtk } from '../../gi/ext';
+import { GObject, St, Clutter, Mtk, Meta } from '../../gi/ext';
 import Tile from '../layout/Tile';
 import Slider from './slider';
 import TileUtils from '../layout/TileUtils';
 import { registerGObjectClass } from '../../utils/gjs';
 import { buildTileGaps } from '../../utils/ui';
+import { getEventCoords } from '../../utils/gnomesupport';
+
+function applyCursor(
+    actor: Clutter.Actor,
+    name: 'default' | 'move' | 'n' | 's' | 'w' | 'e' | 'nw' | 'ne' | 'sw' | 'se',
+) {
+    if ('set_cursor_type' in actor) {
+        // @ts-expect-error "CursorType is available on GNOME 51+"
+        const CT = Clutter.CursorType;
+        if (CT) {
+            let ct = CT.DEFAULT;
+            switch (name) {
+                case 'move':
+                    ct = CT.MOVE ?? CT.ALL_SCROLL;
+                    break;
+                case 'n':
+                    ct = CT.N_RESIZE;
+                    break;
+                case 's':
+                    ct = CT.S_RESIZE;
+                    break;
+                case 'w':
+                    ct = CT.W_RESIZE;
+                    break;
+                case 'e':
+                    ct = CT.E_RESIZE;
+                    break;
+                case 'nw':
+                    ct = CT.NW_RESIZE;
+                    break;
+                case 'ne':
+                    ct = CT.NE_RESIZE;
+                    break;
+                case 'sw':
+                    ct = CT.SW_RESIZE;
+                    break;
+                case 'se':
+                    ct = CT.SE_RESIZE;
+                    break;
+            }
+            // @ts-expect-error "set_cursor_type"
+            actor.set_cursor_type(ct);
+            return;
+        }
+    }
+
+    let mc: Meta.Cursor = Meta.Cursor.DEFAULT;
+    switch (name) {
+        case 'move':
+            // @ts-expect-error "fallback"
+            mc = Meta.Cursor.MOVE ?? Meta.Cursor.ALL_SCROLL ?? Meta.Cursor.DEFAULT;
+            break;
+        case 'n':
+            // @ts-expect-error "fallback"
+            mc = Meta.Cursor.NORTH_RESIZE ?? Meta.Cursor.N_RESIZE ?? Meta.Cursor.DEFAULT;
+            break;
+        case 's':
+            // @ts-expect-error "fallback"
+            mc = Meta.Cursor.SOUTH_RESIZE ?? Meta.Cursor.S_RESIZE ?? Meta.Cursor.DEFAULT;
+            break;
+        case 'w':
+            // @ts-expect-error "fallback"
+            mc = Meta.Cursor.WEST_RESIZE ?? Meta.Cursor.W_RESIZE ?? Meta.Cursor.DEFAULT;
+            break;
+        case 'e':
+            // @ts-expect-error "fallback"
+            mc = Meta.Cursor.EAST_RESIZE ?? Meta.Cursor.E_RESIZE ?? Meta.Cursor.DEFAULT;
+            break;
+        case 'nw':
+            // @ts-expect-error "fallback"
+            mc = Meta.Cursor.NORTH_WEST_RESIZE ?? Meta.Cursor.NW_RESIZE ?? Meta.Cursor.DEFAULT;
+            break;
+        case 'ne':
+            // @ts-expect-error "fallback"
+            mc = Meta.Cursor.NORTH_EAST_RESIZE ?? Meta.Cursor.NE_RESIZE ?? Meta.Cursor.DEFAULT;
+            break;
+        case 'sw':
+            // @ts-expect-error "fallback"
+            mc = Meta.Cursor.SOUTH_WEST_RESIZE ?? Meta.Cursor.SW_RESIZE ?? Meta.Cursor.DEFAULT;
+            break;
+        case 'se':
+            // @ts-expect-error "fallback"
+            mc = Meta.Cursor.SOUTH_EAST_RESIZE ?? Meta.Cursor.SE_RESIZE ?? Meta.Cursor.DEFAULT;
+            break;
+    }
+    global.display.set_cursor(mc);
+}
 
 export default class EditableTilePreview extends TilePreview {
     static { registerGObjectClass(this, {
@@ -12,17 +99,45 @@ export default class EditableTilePreview extends TilePreview {
             'size-changed': {
                 param_types: [Mtk.Rectangle.$gtype, Mtk.Rectangle.$gtype], // oldSize, newSize
             },
+            clicked: {
+                param_types: [GObject.TYPE_INT], // clicked_button
+            },
         },
         GTypeName: 'EditableTilePreview',
     })};
 
     public static MIN_TILE_SIZE: number = 140;
+    public static EDGE_THRESHOLD: number = 18;
 
     private readonly _btn: St.Button;
     private readonly _containerRect: Mtk.Rectangle;
 
     private _sliders: (Slider | null)[];
     private _signals: (number | null)[];
+
+    private _dragMode:
+        | 'none'
+        | 'move'
+        | 'n'
+        | 's'
+        | 'w'
+        | 'e'
+        | 'nw'
+        | 'ne'
+        | 'sw'
+        | 'se' = 'none';
+
+    private _isDragging = false;
+    private _dragStartPos: { x: number; y: number } | null = null;
+
+    private _initialTileProps: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+    } | null = null;
+
+    private _grab: any = null;
 
     constructor(params: {
         tile: Tile;
@@ -44,9 +159,21 @@ export default class EditableTilePreview extends TilePreview {
         });
         this.add_child(this._btn);
         this._btn.set_size(this.innerWidth, this.innerHeight);
-        // handle both left and right clicks
-        this._btn.set_button_mask(St.ButtonMask.ONE | St.ButtonMask.THREE);
+        this._btn.set_button_mask(
+            St.ButtonMask.ONE | St.ButtonMask.TWO | St.ButtonMask.THREE,
+        );
         this._updateLabelText();
+
+        this._btn.connect(
+            'button-press-event',
+            this._onBtnButtonPress.bind(this),
+        );
+        this._btn.connect(
+            'button-release-event',
+            this._onBtnButtonRelease.bind(this),
+        );
+        this._btn.connect('motion-event', this._onBtnMotion.bind(this));
+        this._btn.connect('leave-event', this._onBtnLeave.bind(this));
 
         this.connect('destroy', this._onDestroy.bind(this));
     }
@@ -71,6 +198,16 @@ export default class EditableTilePreview extends TilePreview {
 
     public get hover(): boolean {
         return this._btn.hover;
+    }
+
+    public isNearEdge(localX: number, localY: number): boolean {
+        const threshold = EditableTilePreview.EDGE_THRESHOLD;
+        return (
+            localX <= threshold ||
+            localX >= this.width - threshold ||
+            localY <= threshold ||
+            localY >= this.height - threshold
+        );
     }
 
     public addSlider(slider: Slider, side: St.Side) {
@@ -102,6 +239,19 @@ export default class EditableTilePreview extends TilePreview {
         // update tile's groups
         this._tile.groups = [];
         this._sliders.forEach((sl) => sl && this._tile.groups.push(sl.groupId));
+    }
+
+    public detachSlider(side: St.Side) {
+        const slider = this._sliders[side];
+        if (slider) {
+            slider.detachTile(this);
+        }
+    }
+
+    public detachFromAllSliders() {
+        for (let side = 0; side < 4; side++) {
+            this.detachSlider(side);
+        }
     }
 
     public updateTile({
@@ -149,11 +299,7 @@ export default class EditableTilePreview extends TilePreview {
     public connect(_signal: 'notify::hover', _callback: (_source: this) => void): number;
     public connect(_signal: 'clicked', _callback: (_source: this, _clicked_button: number) => void): number;
     public connect(signal: string, callback: never): number {
-        if (
-            signal === 'clicked' ||
-            signal === 'notify::hover' ||
-            signal === 'motion-event'
-        )
+        if (signal === 'notify::hover' || signal === 'motion-event')
             return this._btn.connect(signal, callback);
 
         return super.connect(signal, callback);
@@ -161,6 +307,244 @@ export default class EditableTilePreview extends TilePreview {
 
     private _updateLabelText() {
         this._btn.label = `${this.innerWidth}x${this.innerHeight}`;
+    }
+
+    private _getResizeEdge(
+        localX: number,
+        localY: number,
+        shiftPressed: boolean,
+    ): 'none' | 'move' | 'n' | 's' | 'w' | 'e' | 'nw' | 'ne' | 'sw' | 'se' {
+        const threshold = EditableTilePreview.EDGE_THRESHOLD;
+        const nearL = localX <= threshold;
+        const nearR = localX >= this.width - threshold;
+        const nearT = localY <= threshold;
+        const nearB = localY >= this.height - threshold;
+
+        const hasNoSliders = this._sliders.every((s) => s === null);
+        const allowEdge = shiftPressed || hasNoSliders;
+
+        if (allowEdge) {
+            if (nearT && nearL) return 'nw';
+            if (nearT && nearR) return 'ne';
+            if (nearB && nearL) return 'sw';
+            if (nearB && nearR) return 'se';
+            if (nearT) return 'n';
+            if (nearB) return 's';
+            if (nearL) return 'w';
+            if (nearR) return 'e';
+        } else {
+            const topFree = this._sliders[St.Side.TOP] === null;
+            const bottomFree = this._sliders[St.Side.BOTTOM] === null;
+            const leftFree = this._sliders[St.Side.LEFT] === null;
+            const rightFree = this._sliders[St.Side.RIGHT] === null;
+
+            if (nearT && nearL && topFree && leftFree) return 'nw';
+            if (nearT && nearR && topFree && rightFree) return 'ne';
+            if (nearB && nearL && bottomFree && leftFree) return 'sw';
+            if (nearB && nearR && bottomFree && rightFree) return 'se';
+            if (nearT && topFree) return 'n';
+            if (nearB && bottomFree) return 's';
+            if (nearL && leftFree) return 'w';
+            if (nearR && rightFree) return 'e';
+        }
+
+        if (shiftPressed) return 'move';
+        return 'none';
+    }
+
+    private _onBtnButtonPress(_: Clutter.Actor, event: Clutter.ButtonEvent): boolean {
+        const button = event.get_button();
+        const [stageX, stageY] = getEventCoords(event);
+        const localX = stageX - this.x;
+        const localY = stageY - this.y;
+        const modifier = event.get_state();
+        const shiftPressed = (modifier & Clutter.ModifierType.SHIFT_MASK) !== 0;
+
+        if (button === 2) {
+            this.emit('clicked', 2);
+            return Clutter.EVENT_STOP;
+        }
+
+        if (button === 3) {
+            this.emit('clicked', 3);
+            return Clutter.EVENT_STOP;
+        }
+
+        if (button === 1) {
+            const mode = this._getResizeEdge(localX, localY, shiftPressed);
+            this._dragMode = mode;
+            this._dragStartPos = { x: stageX, y: stageY };
+            this._initialTileProps = {
+                x: this._tile.x,
+                y: this._tile.y,
+                width: this._tile.width,
+                height: this._tile.height,
+            };
+            this._isDragging = false;
+            this._grab = global.stage.grab(this._btn);
+            return Clutter.EVENT_STOP;
+        }
+
+        return Clutter.EVENT_PROPAGATE;
+    }
+
+    private _onBtnMotion(_: Clutter.Actor, event: Clutter.MotionEvent): boolean {
+        const [stageX, stageY] = getEventCoords(event);
+        const localX = stageX - this.x;
+        const localY = stageY - this.y;
+        const modifier = event.get_state();
+        const shiftPressed = (modifier & Clutter.ModifierType.SHIFT_MASK) !== 0;
+
+        if (this._dragStartPos && this._initialTileProps) {
+            const dist = Math.hypot(
+                stageX - this._dragStartPos.x,
+                stageY - this._dragStartPos.y,
+            );
+            if (dist > 5) {
+                this._isDragging = true;
+            }
+
+            if (this._isDragging && this._dragMode !== 'none') {
+                this._handleDrag(stageX, stageY);
+                return Clutter.EVENT_STOP;
+            }
+        }
+
+        if (!this._isDragging) {
+            const mode = this._getResizeEdge(localX, localY, shiftPressed);
+            applyCursor(this._btn, mode === 'none' ? 'default' : mode);
+        }
+
+        return Clutter.EVENT_PROPAGATE;
+    }
+
+    private _handleDrag(stageX: number, stageY: number): void {
+        if (!this._dragStartPos || !this._initialTileProps) return;
+
+        const deltaX =
+            (stageX - this._dragStartPos.x) / this._containerRect.width;
+        const deltaY =
+            (stageY - this._dragStartPos.y) / this._containerRect.height;
+
+        const minW =
+            EditableTilePreview.MIN_TILE_SIZE / this._containerRect.width;
+        const minH =
+            EditableTilePreview.MIN_TILE_SIZE / this._containerRect.height;
+
+        let newX = this._initialTileProps.x;
+        let newY = this._initialTileProps.y;
+        let newW = this._initialTileProps.width;
+        let newH = this._initialTileProps.height;
+
+        if (this._dragMode === 'move') {
+            this.detachFromAllSliders();
+            newX = Math.max(
+                0,
+                Math.min(1 - newW, this._initialTileProps.x + deltaX),
+            );
+            newY = Math.max(
+                0,
+                Math.min(1 - newH, this._initialTileProps.y + deltaY),
+            );
+        } else {
+            if (this._dragMode.includes('w')) {
+                this.detachSlider(St.Side.LEFT);
+                const maxLeft =
+                    this._initialTileProps.x +
+                    this._initialTileProps.width -
+                    minW;
+                newX = Math.max(
+                    0,
+                    Math.min(maxLeft, this._initialTileProps.x + deltaX),
+                );
+                newW =
+                    this._initialTileProps.width +
+                    (this._initialTileProps.x - newX);
+            }
+            if (this._dragMode.includes('e')) {
+                this.detachSlider(St.Side.RIGHT);
+                const maxW = 1 - this._initialTileProps.x;
+                newW = Math.max(
+                    minW,
+                    Math.min(maxW, this._initialTileProps.width + deltaX),
+                );
+            }
+            if (this._dragMode.includes('n')) {
+                this.detachSlider(St.Side.TOP);
+                const maxTop =
+                    this._initialTileProps.y +
+                    this._initialTileProps.height -
+                    minH;
+                newY = Math.max(
+                    0,
+                    Math.min(maxTop, this._initialTileProps.y + deltaY),
+                );
+                newH =
+                    this._initialTileProps.height +
+                    (this._initialTileProps.y - newY);
+            }
+            if (this._dragMode.includes('s')) {
+                this.detachSlider(St.Side.BOTTOM);
+                const maxH = 1 - this._initialTileProps.y;
+                newH = Math.max(
+                    minH,
+                    Math.min(maxH, this._initialTileProps.height + deltaY),
+                );
+            }
+        }
+
+        this.updateTile({
+            x: newX,
+            y: newY,
+            width: newW,
+            height: newH,
+        });
+    }
+
+    private _onBtnButtonRelease(
+        _: Clutter.Actor,
+        event: Clutter.ButtonEvent,
+    ): boolean {
+        const button = event.get_button();
+        const [stageX, stageY] = getEventCoords(event);
+
+        if (this._grab) {
+            this._grab.dismiss();
+            this._grab = null;
+        }
+
+        if (button === 1 && this._dragStartPos) {
+            const dist = Math.hypot(
+                stageX - this._dragStartPos.x,
+                stageY - this._dragStartPos.y,
+            );
+            const wasDragging = this._isDragging;
+
+            this._dragStartPos = null;
+            this._initialTileProps = null;
+            this._isDragging = false;
+            this._dragMode = 'none';
+
+            if (!wasDragging && dist <= 5) {
+                this.emit('clicked', 1);
+            }
+            applyCursor(this._btn, 'default');
+            return Clutter.EVENT_STOP;
+        }
+
+        this._dragStartPos = null;
+        this._initialTileProps = null;
+        this._isDragging = false;
+        this._dragMode = 'none';
+        applyCursor(this._btn, 'default');
+
+        return Clutter.EVENT_PROPAGATE;
+    }
+
+    private _onBtnLeave(): void {
+        if (!this._isDragging) {
+            applyCursor(this._btn, 'default');
+        }
     }
 
     private _onSliderMove(side: St.Side) {
@@ -194,6 +578,10 @@ export default class EditableTilePreview extends TilePreview {
     }
 
     private _onDestroy(): void {
+        if (this._grab) {
+            this._grab.dismiss();
+            this._grab = null;
+        }
         this._signals.forEach(
             (id, side) => id && this._sliders[side]?.disconnect(id),
         );

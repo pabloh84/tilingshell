@@ -125,11 +125,17 @@ export default class TilingLayoutWithSuggestions extends LayoutWidget<Suggestion
                 width: prev.innerWidth,
                 height: prev.innerHeight,
             });
-            return !tiledWindows.find((win) =>
-                previewRect.overlap(
-                    win === window ? windowDesiredRect : win.get_frame_rect(),
-                ),
-            );
+            return !tiledWindows.find((win) => {
+                const targetRect =
+                    win === window ? windowDesiredRect : win.get_frame_rect();
+                const [intersects, intersection] =
+                    previewRect.intersect(targetRect);
+                if (!intersects) return false;
+                const ratio =
+                    intersection.area() /
+                    Math.min(previewRect.area(), targetRect.area());
+                return ratio >= 0.85;
+            });
         });
         const newPreviews = [];
         for (let index = 0; index < this._previews.length; index++) {

@@ -182,6 +182,12 @@ export default class Indicator extends PanelMenu.Button {
         this.openMenu(false);
     }
 
+    public addOverlappingTileOnClick() {
+        if (!this._layoutEditor || this._state === IndicatorState.DEFAULT)
+            return;
+        this._layoutEditor.addOverlappingTile();
+    }
+
     public saveLayoutOnClick() {
         if (
             this._layoutEditor === null ||
