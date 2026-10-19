@@ -1148,6 +1148,20 @@ export class TilingManager {
         const tilingLayout = this._workspaceTilingLayout.get(currentWs);
         if (!tilingLayout) return;
 
+        const matchingTile = tilingLayout.layout.tiles.find((t) => {
+            const tr = TileUtils.apply_props(t, this._workArea);
+            return (
+                tr.equal(position) ||
+                (Math.abs(tr.x - position.x) < 2 &&
+                    Math.abs(tr.y - position.y) < 2 &&
+                    Math.abs(tr.width - position.width) < 2 &&
+                    Math.abs(tr.height - position.height) < 2)
+            );
+        });
+        const isOverlapping = matchingTile
+            ? matchingTile.groups.length === 0
+            : false;
+
         this._selectedTilesPreview.gaps = buildTileGaps(
             position,
             tilingLayout.innerGaps,
@@ -1156,6 +1170,7 @@ export class TilingManager {
             this._enableScaling
                 ? getScalingFactorOf(tilingLayout)[1]
                 : undefined,
+            isOverlapping,
         ).gaps;
         this._selectedTilesPreview
             .get_parent()
@@ -1280,6 +1295,20 @@ export class TilingManager {
                 this._workArea.height;
         }
 
+        const matchingTile = tilingLayout.layout.tiles.find((t) => {
+            const tr = TileUtils.apply_props(t, this._workArea);
+            return (
+                tr.equal(scaledRect) ||
+                (Math.abs(tr.x - scaledRect.x) < 2 &&
+                    Math.abs(tr.y - scaledRect.y) < 2 &&
+                    Math.abs(tr.width - scaledRect.width) < 2 &&
+                    Math.abs(tr.height - scaledRect.height) < 2)
+            );
+        });
+        const isOverlapping = matchingTile
+            ? matchingTile.groups.length === 0
+            : false;
+
         const gaps = buildTileGaps(
             scaledRect,
             tilingLayout.innerGaps,
@@ -1288,6 +1317,7 @@ export class TilingManager {
             this._enableScaling
                 ? getScalingFactorOf(tilingLayout)[1]
                 : undefined,
+            isOverlapping,
         ).gaps;
 
         const destinationRect = buildRectangle({

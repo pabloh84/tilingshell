@@ -90,11 +90,14 @@ export default class LayoutWidget<
                 tile,
                 containerWithoutOuterGaps,
             );
+            const isOverlapping = tile.groups.length === 0;
             const { gaps, isTop, isRight, isBottom, isLeft } = buildTileGaps(
                 tileRect,
                 this._innerGaps,
                 this._outerGaps,
                 containerWithoutOuterGaps,
+                1,
+                isOverlapping,
             );
 
             if (isTop) {

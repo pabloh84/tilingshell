@@ -73,19 +73,25 @@ export const buildTileGaps = (
     outerGaps: Clutter.Margin,
     container: Mtk.Rectangle,
     scalingFactor: number = 1,
+    isOverlapping: boolean = false,
 ): TileGapsInfo => {
     const { isTop, isRight, isBottom, isLeft } = isTileOnContainerBorder(
         tilePos,
         container,
     );
     const margin = new Clutter.Margin();
-    margin.top = (isTop ? outerGaps.top : innerGaps.top / 2) * scalingFactor;
+    const innerTop = isOverlapping ? 0 : innerGaps.top / 2;
+    const innerBottom = isOverlapping ? 0 : innerGaps.bottom / 2;
+    const innerLeft = isOverlapping ? 0 : innerGaps.left / 2;
+    const innerRight = isOverlapping ? 0 : innerGaps.right / 2;
+
+    margin.top = (isTop ? outerGaps.top : innerTop) * scalingFactor;
     margin.bottom =
-        (isBottom ? outerGaps.bottom : innerGaps.bottom / 2) * scalingFactor;
+        (isBottom ? outerGaps.bottom : innerBottom) * scalingFactor;
     margin.left =
-        (isLeft ? outerGaps.left : innerGaps.left / 2) * scalingFactor;
+        (isLeft ? outerGaps.left : innerLeft) * scalingFactor;
     margin.right =
-        (isRight ? outerGaps.right : innerGaps.right / 2) * scalingFactor;
+        (isRight ? outerGaps.right : innerRight) * scalingFactor;
 
     return {
         gaps: margin,

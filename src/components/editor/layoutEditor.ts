@@ -240,11 +240,14 @@ export default class LayoutEditor extends St.Widget {
         tile: Tile,
         rect: Mtk.Rectangle,
     ): EditableTilePreview {
+        const isOverlapping = tile.groups.length === 0;
         const gaps = buildTileGaps(
             rect,
             this._innerGaps,
             this._outerGaps,
             this._containerRect,
+            1,
+            isOverlapping,
         ).gaps;
         const editableTile = new EditableTilePreview({
             parent: this,

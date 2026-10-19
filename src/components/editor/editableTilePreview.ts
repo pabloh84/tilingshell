@@ -276,11 +276,14 @@ export default class EditableTilePreview extends TilePreview {
         this._tile.height = height;
         this._rect = TileUtils.apply_props(this._tile, this._containerRect);
         if (innerGaps && outerGaps) {
+            const isOverlapping = this._tile.groups.length === 0;
             this.gaps = buildTileGaps(
                 this._rect,
                 innerGaps,
                 outerGaps,
                 this._containerRect,
+                1,
+                isOverlapping,
             ).gaps;
         }
 
