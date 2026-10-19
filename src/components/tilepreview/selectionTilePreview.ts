@@ -81,14 +81,14 @@ export default class SelectionTilePreview extends TilePreview {
         const backgroundColor = this.get_theme_node()
             .get_background_color()
             .copy();
-        // since an alpha value lower than 160 is not so much visible, enforce a minimum value of 160
-        const newAlpha = Math.max(
-            Math.min(backgroundColor.alpha + 35, 255),
-            160,
-        );
-        // The final alpha value is divided by 255 since CSS needs a value from 0 to 1, but ClutterColor expresses alpha from 0 to 255
+        const r = backgroundColor.red;
+        const g = backgroundColor.green;
+        const b = backgroundColor.blue;
+        const bgAlpha = 0.22;
         this.set_style(`
-            background-color: rgba(${backgroundColor.red}, ${backgroundColor.green}, ${backgroundColor.blue}, ${newAlpha / 255}) !important;
+            background-color: rgba(${r}, ${g}, ${b}, ${bgAlpha}) !important;
+            border: 2px solid rgba(${r}, ${g}, ${b}, 0.95) !important;
+            box-shadow: 0 0 16px 2px rgba(${r}, ${g}, ${b}, 0.45) !important;
         `);
     }
 

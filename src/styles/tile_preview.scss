@@ -47,24 +47,24 @@
 }
 
 .tile-preview-center-badge {
-    background-color: rgba(24, 24, 24, 0.78);
-    border: 2px solid rgba(255, 255, 255, 0.7);
+    background-color: rgba(20, 20, 20, 0.85);
+    border: 2px solid rgba(255, 255, 255, 0.8);
     border-radius: 20px;
     width: 38px;
     height: 38px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6);
 }
 
 .tile-preview-center-badge-label {
     color: #ffffff;
     font-weight: 800;
-    font-size: 14pt;
+    font-size: 13pt;
     text-align: center;
 }
 
 .tile-preview-center-badge-active {
     background-color: #3584e4;
-    border: 2px solid #ffffff;
-    box-shadow: 0 0 14px 4px rgba(53, 132, 228, 0.9);
+    border: 2.5px solid #ffffff;
+    box-shadow: 0 0 18px 6px rgba(53, 132, 228, 0.95);
 }
 

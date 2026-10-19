@@ -1205,6 +1205,8 @@ export class TilingManager {
         if (window)
             this._selectedTilesPreview.openAbove(window, position, ease);
         else this._selectedTilesPreview.open(position, ease);
+
+        tilingLayout.bringBadgesToFront();
     }
 
     /**

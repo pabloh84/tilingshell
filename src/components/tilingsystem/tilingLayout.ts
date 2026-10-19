@@ -21,7 +21,7 @@ class DynamicTilePreview extends TilePreview {
     private _originalRect: Mtk.Rectangle;
     private _canRestore: boolean;
     private _tileIndex?: number;
-    private _centerIndicator: St.Bin | null = null;
+    private _centerBadge: St.Bin | null = null;
 
     constructor(
         params: Partial<TilePreviewConstructorProperties>,
@@ -29,40 +29,41 @@ class DynamicTilePreview extends TilePreview {
         tileIndex?: number,
     ) {
         super(params);
-        this.layout_manager = new Clutter.BinLayout();
         this._canRestore = canRestore || false;
         this._tileIndex = tileIndex;
         this._originalRect = this.rect.copy();
-
-        if (this._tileIndex !== undefined) {
-            const label = new St.Label({
-                text: `${this._tileIndex}`,
-                styleClass: 'tile-preview-center-badge-label',
-                xAlign: Clutter.ActorAlign.CENTER,
-                yAlign: Clutter.ActorAlign.CENTER,
-            });
-            this._centerIndicator = new St.Bin({
-                styleClass: 'tile-preview-center-badge',
-                child: label,
-                xAlign: Clutter.ActorAlign.CENTER,
-                yAlign: Clutter.ActorAlign.CENTER,
-            });
-            this.add_child(this._centerIndicator);
-        }
     }
 
     public get tileIndex(): number | undefined {
         return this._tileIndex;
     }
 
+    public setCenterBadge(badge: St.Bin | null): void {
+        this._centerBadge = badge;
+    }
+
+    public get centerBadge(): St.Bin | null {
+        return this._centerBadge;
+    }
+
+    public updateBadgePosition(): void {
+        if (!this._centerBadge) return;
+        const centerX = this.innerX + this.innerWidth / 2;
+        const centerY = this.innerY + this.innerHeight / 2;
+        this._centerBadge.set_position(
+            Math.round(centerX - 19),
+            Math.round(centerY - 19),
+        );
+    }
+
     public setIndicatorActive(active: boolean): void {
-        if (!this._centerIndicator) return;
+        if (!this._centerBadge) return;
         if (active) {
-            this._centerIndicator.add_style_class_name(
+            this._centerBadge.add_style_class_name(
                 'tile-preview-center-badge-active',
             );
         } else {
-            this._centerIndicator.remove_style_class_name(
+            this._centerBadge.remove_style_class_name(
                 'tile-preview-center-badge-active',
             );
         }
@@ -74,6 +75,11 @@ class DynamicTilePreview extends TilePreview {
 
     public get canRestore(): boolean {
         return this._canRestore;
+    }
+
+    public override open(position: Mtk.Rectangle | undefined = undefined, ease: boolean = false): void {
+        super.open(position, ease);
+        this.updateBadgePosition();
     }
 
     public restore(ease: boolean = false): boolean {
@@ -94,7 +100,12 @@ class DynamicTilePreview extends TilePreview {
 export default class TilingLayout extends LayoutWidget<DynamicTilePreview> {
     static { registerGObjectClass(this) }
 
+    private static readonly BADGE_ATTRACTION_RADIUS = 75; // px
+    private static readonly HYSTERESIS_MARGIN = 70; // px
+
     private _showing: boolean;
+    private _badgesGroup: St.Widget;
+    private _lastSelectedCandidate: DynamicTilePreview | null = null;
 
     constructor(
         layout: Layout,
@@ -111,6 +122,13 @@ export default class TilingLayout extends LayoutWidget<DynamicTilePreview> {
             outerGaps,
             scalingFactor,
         });
+        this._badgesGroup = new St.Widget({
+            name: 'tilingshell-badges-group',
+            reactive: false,
+        });
+        global.windowGroup.add_child(this._badgesGroup);
+        this._badgesGroup.hide();
+
         this._showing = false;
         super.relayout();
     }
@@ -118,6 +136,13 @@ export default class TilingLayout extends LayoutWidget<DynamicTilePreview> {
     _init() {
         super._init();
         this.hide();
+    }
+
+    protected override draw_layout(): void {
+        if (this._badgesGroup) {
+            this._badgesGroup.destroy_all_children();
+        }
+        super.draw_layout();
     }
 
     protected buildTile(
@@ -138,7 +163,42 @@ export default class TilingLayout extends LayoutWidget<DynamicTilePreview> {
             prev.gaps.bottom > 0,
             prev.gaps.left > 0,
         );
+
+        if (index !== undefined && this._badgesGroup) {
+            const label = new St.Label({
+                text: `${index}`,
+                styleClass: 'tile-preview-center-badge-label',
+                xAlign: Clutter.ActorAlign.CENTER,
+                yAlign: Clutter.ActorAlign.CENTER,
+            });
+            const badge = new St.Bin({
+                styleClass: 'tile-preview-center-badge',
+                child: label,
+                xAlign: Clutter.ActorAlign.CENTER,
+                yAlign: Clutter.ActorAlign.CENTER,
+            });
+            this._badgesGroup.add_child(badge);
+            prev.setCenterBadge(badge);
+            prev.updateBadgePosition();
+        }
+
         return prev;
+    }
+
+    public bringBadgesToFront(): void {
+        if (
+            this._badgesGroup &&
+            this._badgesGroup.get_parent() === global.windowGroup
+        ) {
+            global.windowGroup.set_child_above_sibling(this._badgesGroup, null);
+        }
+    }
+
+    public override destroy(): void {
+        if (this._badgesGroup) {
+            this._badgesGroup.destroy();
+        }
+        super.destroy();
     }
 
     public get showing(): boolean {
@@ -167,10 +227,19 @@ export default class TilingLayout extends LayoutWidget<DynamicTilePreview> {
 
         this.show();
         this._showing = true;
+        this.bringBadgesToFront();
+        this._badgesGroup.show();
+        this._previews.forEach((p) => p.updateBadgePosition());
 
         this.ease({
             x: this.x,
             y: this.y,
+            opacity: 255,
+            duration: ease ? GlobalState.get().tilePreviewAnimationTime : 0,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+        });
+
+        this._badgesGroup.ease({
             opacity: 255,
             duration: ease ? GlobalState.get().tilePreviewAnimationTime : 0,
             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
@@ -181,6 +250,7 @@ export default class TilingLayout extends LayoutWidget<DynamicTilePreview> {
         if (!this._showing) return;
 
         this._showing = false;
+        this._lastSelectedCandidate = null;
 
         this.ease({
             opacity: 0,
@@ -189,6 +259,15 @@ export default class TilingLayout extends LayoutWidget<DynamicTilePreview> {
             onComplete: () => {
                 this.unhoverAllTiles();
                 this.hide();
+            },
+        });
+
+        this._badgesGroup.ease({
+            opacity: 0,
+            duration: ease ? GlobalState.get().tilePreviewAnimationTime : 0,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            onComplete: () => {
+                this._badgesGroup.hide();
             },
         });
     }
@@ -224,51 +303,109 @@ export default class TilingLayout extends LayoutWidget<DynamicTilePreview> {
         }
         if (candidates.length === 0) {
             this._previews.forEach((p) => p.setIndicatorActive(false));
+            this._lastSelectedCandidate = null;
             return undefined;
         }
 
-        let bestCandidate = candidates[0];
-        const bestRect =
-            reset && bestCandidate.canRestore
-                ? bestCandidate.originalRect
-                : bestCandidate.rect;
-        let bestDistance = squaredEuclideanDistance(
-            {
-                x: bestRect.x + bestRect.width / 2,
-                y: bestRect.y + bestRect.height / 2,
-            },
-            currPointerPos,
-        );
+        // 1. Priority: Badge Attraction zone
+        let bestAttractionCandidate: DynamicTilePreview | null = null;
+        let minAttractionDist = Number.MAX_VALUE;
 
-        for (let i = 1; i < candidates.length; i++) {
-            const candidate = candidates[i];
+        for (const candidate of candidates) {
             const r =
                 reset && candidate.canRestore
                     ? candidate.originalRect
                     : candidate.rect;
-            const center = {
-                x: r.x + r.width / 2,
-                y: r.y + r.height / 2,
-            };
-            const dist = squaredEuclideanDistance(center, currPointerPos);
-            const currentBestR =
-                reset && bestCandidate.canRestore
-                    ? bestCandidate.originalRect
-                    : bestCandidate.rect;
+            const centerX = r.x + r.width / 2;
+            const centerY = r.y + r.height / 2;
+            const dist = Math.hypot(
+                centerX - currPointerPos.x,
+                centerY - currPointerPos.y,
+            );
+
             if (
-                dist < bestDistance ||
-                (Math.abs(dist - bestDistance) < 100 &&
-                    r.area() < currentBestR.area())
+                dist <= TilingLayout.BADGE_ATTRACTION_RADIUS &&
+                dist < minAttractionDist
             ) {
-                bestCandidate = candidate;
-                bestDistance = dist;
+                minAttractionDist = dist;
+                bestAttractionCandidate = candidate;
             }
         }
+
+        let bestCandidate: DynamicTilePreview;
+
+        if (bestAttractionCandidate !== null) {
+            bestCandidate = bestAttractionCandidate;
+        } else if (
+            this._lastSelectedCandidate &&
+            candidates.includes(this._lastSelectedCandidate)
+        ) {
+            // 2. Hysteresis: only switch if another candidate is at least HYSTERESIS_MARGIN closer
+            const lastR =
+                reset && this._lastSelectedCandidate.canRestore
+                    ? this._lastSelectedCandidate.originalRect
+                    : this._lastSelectedCandidate.rect;
+            const lastDist = Math.hypot(
+                lastR.x + lastR.width / 2 - currPointerPos.x,
+                lastR.y + lastR.height / 2 - currPointerPos.y,
+            );
+
+            let challenger: DynamicTilePreview | null = null;
+            let challengerDist = Number.MAX_VALUE;
+
+            for (const candidate of candidates) {
+                if (candidate === this._lastSelectedCandidate) continue;
+                const r =
+                    reset && candidate.canRestore
+                        ? candidate.originalRect
+                        : candidate.rect;
+                const dist = Math.hypot(
+                    r.x + r.width / 2 - currPointerPos.x,
+                    r.y + r.height / 2 - currPointerPos.y,
+                );
+
+                if (dist < challengerDist) {
+                    challengerDist = dist;
+                    challenger = candidate;
+                }
+            }
+
+            if (
+                challenger &&
+                challengerDist < lastDist - TilingLayout.HYSTERESIS_MARGIN
+            ) {
+                bestCandidate = challenger;
+            } else {
+                bestCandidate = this._lastSelectedCandidate;
+            }
+        } else {
+            // 3. Fallback: pick the closest candidate by center distance
+            let closest = candidates[0];
+            let minDist = Number.MAX_VALUE;
+
+            for (const candidate of candidates) {
+                const r =
+                    reset && candidate.canRestore
+                        ? candidate.originalRect
+                        : candidate.rect;
+                const dist = Math.hypot(
+                    r.x + r.width / 2 - currPointerPos.x,
+                    r.y + r.height / 2 - currPointerPos.y,
+                );
+                if (dist < minDist) {
+                    minDist = dist;
+                    closest = candidate;
+                }
+            }
+            bestCandidate = closest;
+        }
+
+        this._lastSelectedCandidate = bestCandidate;
 
         this._previews.forEach((p) => {
             p.setIndicatorActive(p === bestCandidate);
         });
-        this.set_child_above_sibling(bestCandidate, null);
+        this.bringBadgesToFront();
 
         if (reset && bestCandidate.originalRect)
             return bestCandidate.originalRect;
@@ -288,6 +425,7 @@ export default class TilingLayout extends LayoutWidget<DynamicTilePreview> {
     }
 
     public unhoverAllTiles() {
+        this._lastSelectedCandidate = null;
         const newPreviewsArray: DynamicTilePreview[] = [];
         this._previews.forEach((preview) => {
             preview.setIndicatorActive(false);
