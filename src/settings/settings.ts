@@ -710,6 +710,53 @@ export default class Settings {
                 ],
                 'Layout 4',
             ),
+            new Layout(
+                [
+                    new Tile({
+                        x: 0,
+                        y: 0,
+                        height: 0.5,
+                        width: 0.22,
+                        groups: [1, 2],
+                    }),
+                    new Tile({
+                        x: 0,
+                        y: 0.5,
+                        height: 0.5,
+                        width: 0.22,
+                        groups: [1, 2],
+                    }),
+                    new Tile({
+                        x: 0.22,
+                        y: 0,
+                        height: 1,
+                        width: 0.56,
+                        groups: [2, 3],
+                    }),
+                    new Tile({
+                        x: 0.78,
+                        y: 0,
+                        height: 0.5,
+                        width: 0.22,
+                        groups: [3, 4],
+                    }),
+                    new Tile({
+                        x: 0.78,
+                        y: 0.5,
+                        height: 0.5,
+                        width: 0.22,
+                        groups: [3, 4],
+                    }),
+                    new Tile({
+                        x: 0.1,
+                        y: 0.1,
+                        height: 0.8,
+                        width: 0.8,
+                        groups: [],
+                    }),
+                ],
+                'Layout 5',
+            ),
         ]);
     }
 
