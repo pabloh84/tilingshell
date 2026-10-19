@@ -1,5 +1,5 @@
 import { registerGObjectClass } from '../../utils/gjs';
-import { Clutter, Mtk, Meta } from '../../gi/ext';
+import { St, Clutter, Mtk, Meta } from '../../gi/ext';
 import { TilePreviewConstructorProperties } from '../tilepreview/tilePreview';
 import TilePreview from '../tilepreview/tilePreview';
 import LayoutWidget from '../layout/LayoutWidget';
@@ -28,10 +28,8 @@ class DynamicTilePreview extends TilePreview {
         canRestore?: boolean,
         tileIndex?: number,
     ) {
-        super({
-            ...params,
-            layoutManager: new Clutter.BinLayout(),
-        });
+        super(params);
+        this.layout_manager = new Clutter.BinLayout();
         this._canRestore = canRestore || false;
         this._tileIndex = tileIndex;
         this._originalRect = this.rect.copy();
