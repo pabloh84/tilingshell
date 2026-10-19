@@ -20,14 +20,54 @@ class DynamicTilePreview extends TilePreview {
 
     private _originalRect: Mtk.Rectangle;
     private _canRestore: boolean;
+    private _tileIndex?: number;
+    private _centerIndicator: St.Bin | null = null;
 
     constructor(
         params: Partial<TilePreviewConstructorProperties>,
         canRestore?: boolean,
+        tileIndex?: number,
     ) {
-        super(params);
+        super({
+            ...params,
+            layoutManager: new Clutter.BinLayout(),
+        });
         this._canRestore = canRestore || false;
+        this._tileIndex = tileIndex;
         this._originalRect = this.rect.copy();
+
+        if (this._tileIndex !== undefined) {
+            const label = new St.Label({
+                text: `${this._tileIndex}`,
+                styleClass: 'tile-preview-center-badge-label',
+                xAlign: Clutter.ActorAlign.CENTER,
+                yAlign: Clutter.ActorAlign.CENTER,
+            });
+            this._centerIndicator = new St.Bin({
+                styleClass: 'tile-preview-center-badge',
+                child: label,
+                xAlign: Clutter.ActorAlign.CENTER,
+                yAlign: Clutter.ActorAlign.CENTER,
+            });
+            this.add_child(this._centerIndicator);
+        }
+    }
+
+    public get tileIndex(): number | undefined {
+        return this._tileIndex;
+    }
+
+    public setIndicatorActive(active: boolean): void {
+        if (!this._centerIndicator) return;
+        if (active) {
+            this._centerIndicator.add_style_class_name(
+                'tile-preview-center-badge-active',
+            );
+        } else {
+            this._centerIndicator.remove_style_class_name(
+                'tile-preview-center-badge-active',
+            );
+        }
     }
 
     public get originalRect(): Mtk.Rectangle {
@@ -87,8 +127,13 @@ export default class TilingLayout extends LayoutWidget<DynamicTilePreview> {
         rect: Mtk.Rectangle,
         gaps: Clutter.Margin,
         tile: Tile,
+        index?: number,
     ): DynamicTilePreview {
-        const prev = new DynamicTilePreview({ parent, rect, gaps, tile }, true);
+        const prev = new DynamicTilePreview(
+            { parent, rect, gaps, tile },
+            true,
+            index,
+        );
         prev.updateBorderRadius(
             prev.gaps.top > 0,
             prev.gaps.right > 0,
@@ -179,7 +224,10 @@ export default class TilingLayout extends LayoutWidget<DynamicTilePreview> {
                     this._isHovered(currPointerPos, preview.originalRect),
             );
         }
-        if (candidates.length === 0) return undefined;
+        if (candidates.length === 0) {
+            this._previews.forEach((p) => p.setIndicatorActive(false));
+            return undefined;
+        }
 
         let bestCandidate = candidates[0];
         const bestRect =
@@ -219,6 +267,11 @@ export default class TilingLayout extends LayoutWidget<DynamicTilePreview> {
             }
         }
 
+        this._previews.forEach((p) => {
+            p.setIndicatorActive(p === bestCandidate);
+        });
+        this.set_child_above_sibling(bestCandidate, null);
+
         if (reset && bestCandidate.originalRect)
             return bestCandidate.originalRect;
         return bestCandidate.rect;
@@ -239,6 +292,7 @@ export default class TilingLayout extends LayoutWidget<DynamicTilePreview> {
     public unhoverAllTiles() {
         const newPreviewsArray: DynamicTilePreview[] = [];
         this._previews.forEach((preview) => {
+            preview.setIndicatorActive(false);
             if (preview.restore(true)) {
                 newPreviewsArray.push(preview);
                 preview.open(undefined, true);
@@ -253,19 +307,10 @@ export default class TilingLayout extends LayoutWidget<DynamicTilePreview> {
     public hoverTilesInRect(rect: Mtk.Rectangle, reset: boolean) {
         if (this.hasOverlappingTiles()) {
             this._previews.forEach((preview) => {
-                const [hasIntersection, intersection] =
-                    preview.rect.intersect(rect);
-                if (
-                    hasIntersection &&
-                    intersection.area() >= preview.rect.area() * 0.85
-                ) {
-                    preview.close();
-                } else if (reset) {
+                if (reset) {
                     preview.restore(true);
-                    preview.open(undefined, true);
-                } else {
-                    preview.open(undefined, true);
                 }
+                preview.open(undefined, true);
             });
             return;
         }

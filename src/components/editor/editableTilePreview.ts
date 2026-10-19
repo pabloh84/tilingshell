@@ -4,8 +4,9 @@ import Tile from '../layout/Tile';
 import Slider from './slider';
 import TileUtils from '../layout/TileUtils';
 import { registerGObjectClass } from '../../utils/gjs';
-import { buildTileGaps } from '../../utils/ui';
+import { buildMargin, buildTileGaps } from '../../utils/ui';
 import { getEventCoords } from '../../utils/gnomesupport';
+import Settings from '../../settings/settings';
 
 function applyCursor(
     actor: Clutter.Actor,
@@ -138,6 +139,8 @@ export default class EditableTilePreview extends TilePreview {
     } | null = null;
 
     private _grab: any = null;
+    private _innerGaps: Clutter.Margin;
+    private _outerGaps: Clutter.Margin;
 
     constructor(params: {
         tile: Tile;
@@ -145,11 +148,17 @@ export default class EditableTilePreview extends TilePreview {
         parent?: Clutter.Actor;
         rect?: Mtk.Rectangle;
         gaps?: Clutter.Margin;
+        innerGaps?: Clutter.Margin;
+        outerGaps?: Clutter.Margin;
     }) {
         super(params);
         this.add_style_class_name('editable-tile-preview');
         this._tile = params.tile;
         this._containerRect = params.containerRect;
+        this._innerGaps =
+            params.innerGaps || buildMargin(Settings.get_inner_gaps());
+        this._outerGaps =
+            params.outerGaps || buildMargin(Settings.get_outer_gaps());
         this._sliders = [null, null, null, null];
         this._signals = [null, null, null, null];
         this._btn = new St.Button({
@@ -198,6 +207,19 @@ export default class EditableTilePreview extends TilePreview {
 
     public get hover(): boolean {
         return this._btn.hover;
+    }
+
+    public getLocalCoords(stageX: number, stageY: number): [number, number] {
+        const [success, localX, localY] = this.transform_stage_point(
+            stageX,
+            stageY,
+        );
+        if (success) return [localX, localY];
+
+        const parent = this.get_parent();
+        const parentX = parent ? parent.x : 0;
+        const parentY = parent ? parent.y : 0;
+        return [stageX - parentX - this.x, stageY - parentY - this.y];
     }
 
     public isNearEdge(localX: number, localY: number): boolean {
@@ -275,17 +297,17 @@ export default class EditableTilePreview extends TilePreview {
         this._tile.width = width;
         this._tile.height = height;
         this._rect = TileUtils.apply_props(this._tile, this._containerRect);
-        if (innerGaps && outerGaps) {
-            const isOverlapping = this._tile.groups.length === 0;
-            this.gaps = buildTileGaps(
-                this._rect,
-                innerGaps,
-                outerGaps,
-                this._containerRect,
-                1,
-                isOverlapping,
-            ).gaps;
-        }
+        const inGaps = innerGaps || this._innerGaps;
+        const outGaps = outerGaps || this._outerGaps;
+        const isOverlapping = this._tile.groups.length === 0;
+        this.gaps = buildTileGaps(
+            this._rect,
+            inGaps,
+            outGaps,
+            this._containerRect,
+            1,
+            isOverlapping,
+        ).gaps;
 
         this.set_size(this.innerWidth, this.innerHeight);
         this.set_position(this.innerX, this.innerY);
@@ -358,10 +380,11 @@ export default class EditableTilePreview extends TilePreview {
     private _onBtnButtonPress(_: Clutter.Actor, event: Clutter.ButtonEvent): boolean {
         const button = event.get_button();
         const [stageX, stageY] = getEventCoords(event);
-        const localX = stageX - this.x;
-        const localY = stageY - this.y;
+        const [localX, localY] = this.getLocalCoords(stageX, stageY);
         const modifier = event.get_state();
-        const shiftPressed = (modifier & Clutter.ModifierType.SHIFT_MASK) !== 0;
+        const [, , pointerModifier] = global.get_pointer();
+        const shiftPressed =
+            ((modifier | pointerModifier) & Clutter.ModifierType.SHIFT_MASK) !== 0;
 
         if (button === 2) {
             this.emit('clicked', 2);
@@ -393,10 +416,11 @@ export default class EditableTilePreview extends TilePreview {
 
     private _onBtnMotion(_: Clutter.Actor, event: Clutter.MotionEvent): boolean {
         const [stageX, stageY] = getEventCoords(event);
-        const localX = stageX - this.x;
-        const localY = stageY - this.y;
+        const [localX, localY] = this.getLocalCoords(stageX, stageY);
         const modifier = event.get_state();
-        const shiftPressed = (modifier & Clutter.ModifierType.SHIFT_MASK) !== 0;
+        const [, , pointerModifier] = global.get_pointer();
+        const shiftPressed =
+            ((modifier | pointerModifier) & Clutter.ModifierType.SHIFT_MASK) !== 0;
 
         if (this._dragStartPos && this._initialTileProps) {
             const dist = Math.hypot(
@@ -408,6 +432,7 @@ export default class EditableTilePreview extends TilePreview {
             }
 
             if (this._isDragging && this._dragMode !== 'none') {
+                applyCursor(this._btn, this._dragMode);
                 this._handleDrag(stageX, stageY);
                 return Clutter.EVENT_STOP;
             }

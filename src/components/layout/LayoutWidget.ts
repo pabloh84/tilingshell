@@ -85,7 +85,7 @@ export default class LayoutWidget<
                 this._outerGaps.top -
                 this._outerGaps.bottom,
         });
-        this._previews = this._layout.tiles.map((tile) => {
+        this._previews = this._layout.tiles.map((tile, index) => {
             const tileRect = TileUtils.apply_props(
                 tile,
                 containerWithoutOuterGaps,
@@ -112,7 +112,7 @@ export default class LayoutWidget<
 
             if (isBottom) tileRect.height += this._outerGaps.bottom;
 
-            return this.buildTile(this, tileRect, gaps, tile);
+            return this.buildTile(this, tileRect, gaps, tile, index + 1);
         });
     }
 
@@ -121,6 +121,7 @@ export default class LayoutWidget<
         _rect: Mtk.Rectangle,
         _margin: Clutter.Margin,
         _tile: Tile,
+        _index?: number,
     ): TileType {
         throw new Error(
             "This class shouldn't be instantiated but it should be extended instead",

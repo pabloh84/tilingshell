@@ -255,6 +255,8 @@ export default class LayoutEditor extends St.Widget {
             containerRect: this._containerRect,
             rect,
             gaps,
+            innerGaps: this._innerGaps,
+            outerGaps: this._outerGaps,
         });
         editableTile.open();
         editableTile.connect('clicked', (_, clicked_button: number) => {
@@ -280,12 +282,8 @@ export default class LayoutEditor extends St.Widget {
         });
         editableTile.connect('motion-event', (_, event: Clutter.Event) => {
             const [stageX, stageY] = getEventCoords(event);
-            if (
-                editableTile.isNearEdge(
-                    stageX - editableTile.x,
-                    stageY - editableTile.y,
-                )
-            ) {
+            const [localX, localY] = editableTile.getLocalCoords(stageX, stageY);
+            if (editableTile.isNearEdge(localX, localY)) {
                 this._hoverWidget.hide();
                 return Clutter.EVENT_PROPAGATE;
             }
