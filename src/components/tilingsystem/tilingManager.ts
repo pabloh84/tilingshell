@@ -14,7 +14,11 @@ import {
 import TilingLayout from '../../components/tilingsystem/tilingLayout';
 import SnapAssist from '../snapassist/snapAssist';
 import SelectionTilePreview from '../tilepreview/selectionTilePreview';
-import { ActivationKey, EdgeTilingMode } from '../../settings/settings';
+import {
+    ActivationKey,
+    EdgeTilingMode,
+    RmbActivationMode,
+} from '../../settings/settings';
 import Settings from '../../settings/settings';
 import SignalHandling from '../../utils/signalHandling';
 import Layout from '../layout/Layout';
@@ -70,8 +74,11 @@ export class TilingManager {
     private _enableScaling: boolean;
 
     private _isGrabbingWindow: boolean;
-    private _rmbFilterId: number = 0;
-    private _rmbFilterInstalled: boolean = false;
+    private static _rmbFilterId: number = 0;
+    private static _rmbFilterInstalled: boolean = false;
+    private static _rmbToggledOn: boolean = false;
+    private static _wasRmbDown: boolean = false;
+    private static _rmbClickHandled: boolean = false;
     private _movingWindowTimerDuration: number = 15;
     private _lastCursorPos: { x: number; y: number } | null = null;
     private _grabStartPosition: { x: number; y: number } | null = null;
@@ -560,6 +567,9 @@ export class TilingManager {
         }
 
         this._isGrabbingWindow = true;
+        TilingManager._rmbToggledOn = false;
+        TilingManager._wasRmbDown = false;
+        TilingManager._rmbClickHandled = false;
         this._installRmbFilterIfNeeded();
         this._movingWindowTimerId = GLib.timeout_add(
             GLib.PRIORITY_DEFAULT_IDLE,
@@ -572,13 +582,14 @@ export class TilingManager {
 
     private _anyActivationKeyIsRmb(): boolean {
         return (
+            Settings.ENABLE_RMB_ACTIVATION ||
             Settings.TILING_SYSTEM_ACTIVATION_KEY === ActivationKey.RIGHT_BUTTON ||
             Settings.TILING_SYSTEM_DEACTIVATION_KEY === ActivationKey.RIGHT_BUTTON ||
             Settings.SPAN_MULTIPLE_TILES_ACTIVATION_KEY === ActivationKey.RIGHT_BUTTON
         );
     }
 
-    private _rmbEventFilter(event: Clutter.Event, _actor: Clutter.Actor): boolean {
+    private static _rmbEventFilter(event: Clutter.Event): boolean {
         // Fast path: only act on button press/release.
         const t = event.type();
         if (
@@ -590,13 +601,22 @@ export class TilingManager {
         // Swallow RMB press/release so Mutter's MOVING grab doesn't see them.
         // CLUTTER_BUTTON_SECONDARY === 3.
         if (event.get_button() === Clutter.BUTTON_SECONDARY) {
+            if (
+                t === Clutter.EventType.BUTTON_PRESS &&
+                Settings.RMB_ACTIVATION_MODE === RmbActivationMode.TOGGLE
+            ) {
+                TilingManager._rmbToggledOn = !TilingManager._rmbToggledOn;
+                TilingManager._rmbClickHandled = true;
+            } else if (t === Clutter.EventType.BUTTON_RELEASE) {
+                TilingManager._rmbClickHandled = false;
+            }
             return Clutter.EVENT_STOP;
         }
         return Clutter.EVENT_PROPAGATE;
     }
 
     private _installRmbFilterIfNeeded(): void {
-        if (this._rmbFilterInstalled) return;
+        if (TilingManager._rmbFilterInstalled) return;
         if (!this._anyActivationKeyIsRmb()) return;
         // `Clutter.event_add_filter` / `event_remove_filter` are not always
         // present in @girs/clutter type stubs. Cast to `any` to access them
@@ -610,12 +630,12 @@ export class TilingManager {
             return;
         }
         try {
-            this._rmbFilterId = addFilter(
+            TilingManager._rmbFilterId = addFilter(
                 global.stage,
-                this._rmbEventFilter.bind(this),
+                TilingManager._rmbEventFilter,
             );
-            this._rmbFilterInstalled = this._rmbFilterId !== 0;
-            if (!this._rmbFilterInstalled) {
+            TilingManager._rmbFilterInstalled = TilingManager._rmbFilterId !== 0;
+            if (!TilingManager._rmbFilterInstalled) {
                 console.error(
                     'tilingshell: Clutter.event_add_filter returned 0; ' +
                     'RIGHT_BUTTON activation key will not work this drag.',
@@ -623,27 +643,27 @@ export class TilingManager {
             }
         } catch (e) {
             console.error('tilingshell: failed to install RMB filter: ' + e);
-            this._rmbFilterInstalled = false;
-            this._rmbFilterId = 0;
+            TilingManager._rmbFilterInstalled = false;
+            TilingManager._rmbFilterId = 0;
         }
     }
 
     private _removeRmbFilterIfInstalled(): void {
-        if (!this._rmbFilterInstalled || this._rmbFilterId === 0) return;
+        if (!TilingManager._rmbFilterInstalled || TilingManager._rmbFilterId === 0) return;
         const removeFilter = (Clutter as any).event_remove_filter;
         if (typeof removeFilter !== 'function') {
             // Defensive: should not happen if install succeeded.
-            this._rmbFilterInstalled = false;
-            this._rmbFilterId = 0;
+            TilingManager._rmbFilterInstalled = false;
+            TilingManager._rmbFilterId = 0;
             return;
         }
         try {
-            removeFilter(this._rmbFilterId);
+            removeFilter(TilingManager._rmbFilterId);
         } catch (e) {
             console.error('tilingshell: failed to remove RMB filter: ' + e);
         }
-        this._rmbFilterInstalled = false;
-        this._rmbFilterId = 0;
+        TilingManager._rmbFilterInstalled = false;
+        TilingManager._rmbFilterId = 0;
     }
 
     private _activationKeyStatus(
@@ -665,7 +685,13 @@ export class TilingManager {
                 // not SUPER_MASK (which has a different bit position).
                 mask = Clutter.ModifierType.MOD4_MASK;
                 break;
+            case ActivationKey.SHIFT:
+                mask = Clutter.ModifierType.SHIFT_MASK;
+                break;
             case ActivationKey.RIGHT_BUTTON:
+                if (Settings.RMB_ACTIVATION_MODE === RmbActivationMode.TOGGLE) {
+                    return TilingManager._rmbToggledOn;
+                }
                 // Clutter's native backend maps clutter_button=3 (RMB) to
                 // BUTTON2_MASK (see mutter src/backends/native/meta-seat-impl.c
                 // maskmap). BUTTON3_MASK is the middle button — do not use it.
@@ -673,6 +699,19 @@ export class TilingManager {
                 break;
         }
         return (modifier & mask) !== 0;
+    }
+
+    private _isTilingSystemActivated(modifier: number): boolean {
+        const keyActive = this._activationKeyStatus(
+            modifier,
+            Settings.TILING_SYSTEM_ACTIVATION_KEY,
+        );
+        const isRmbDown = (modifier & Clutter.ModifierType.BUTTON2_MASK) !== 0;
+        const rmbActive =
+            Settings.RMB_ACTIVATION_MODE === RmbActivationMode.TOGGLE
+                ? TilingManager._rmbToggledOn
+                : isRmbDown;
+        return keyActive || (Settings.ENABLE_RMB_ACTIVATION && rmbActive);
     }
 
     private _onMovingWindow(window: Meta.Window, grabOp: number) {
@@ -706,6 +745,26 @@ export class TilingManager {
         const [x, y, modifier] = TouchPointer.get().isTouchDeviceActive()
             ? TouchPointer.get().get_pointer(window)
             : global.get_pointer();
+
+        const isRmbDown = (modifier & Clutter.ModifierType.BUTTON2_MASK) !== 0;
+        if (
+            (Settings.ENABLE_RMB_ACTIVATION ||
+                Settings.TILING_SYSTEM_ACTIVATION_KEY ===
+                    ActivationKey.RIGHT_BUTTON) &&
+            Settings.RMB_ACTIVATION_MODE === RmbActivationMode.TOGGLE
+        ) {
+            if (
+                isRmbDown &&
+                !TilingManager._wasRmbDown &&
+                !TilingManager._rmbClickHandled
+            ) {
+                TilingManager._rmbToggledOn = !TilingManager._rmbToggledOn;
+            }
+            if (!isRmbDown) {
+                TilingManager._rmbClickHandled = false;
+            }
+        }
+        TilingManager._wasRmbDown = isRmbDown;
         const extWin = window as ExtendedWindow;
         extWin.assignedTile = undefined;
         const currPointerPos = { x, y };
@@ -771,10 +830,7 @@ export class TilingManager {
             modifier,
             Settings.SPAN_MULTIPLE_TILES_ACTIVATION_KEY,
         );
-        const isTilingSystemActivated = this._activationKeyStatus(
-            modifier,
-            Settings.TILING_SYSTEM_ACTIVATION_KEY,
-        );
+        const isTilingSystemActivated = this._isTilingSystemActivated(modifier);
         const deactivationKey = Settings.TILING_SYSTEM_DEACTIVATION_KEY;
         const isTilingSystemDeactivated =
             deactivationKey === ActivationKey.NONE
@@ -909,10 +965,15 @@ export class TilingManager {
         this._snapAssist.close(true);
         this._lastCursorPos = null;
 
-        const isTilingSystemActivated = this._activationKeyStatus(
+        const isTilingSystemActivated = this._isTilingSystemActivated(
             global.get_pointer()[2],
-            Settings.TILING_SYSTEM_ACTIVATION_KEY,
         );
+        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            TilingManager._rmbToggledOn = false;
+            TilingManager._wasRmbDown = false;
+            TilingManager._rmbClickHandled = false;
+            return GLib.SOURCE_REMOVE;
+        });
         if (
             !isTilingSystemActivated &&
             !this._snapAssistingInfo.isSnapAssisting &&

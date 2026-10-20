@@ -22,6 +22,20 @@
             <summary>Tiling system deactivation key</summary>
             <description>Which key to hold while moving a window to deactivate the tiling system.</description>
         </key>
+        <key name="enable-rmb-activation" type="b">
+            <default>true</default>
+            <summary>Activate tiling system with secondary mouse button</summary>
+            <description>Activate tiling system by clicking or holding the right mouse button while dragging a window.</description>
+        </key>
+        <key name="rmb-activation-mode" type="s">
+            <choices>
+                <choice value="toggle"/>
+                <choice value="hold"/>
+            </choices>
+            <default>'toggle'</default>
+            <summary>Secondary mouse button activation mode</summary>
+            <description>Whether the secondary mouse button toggles zone activation on click or requires being held down.</description>
+        </key>
         <key name="enable-snap-assist" type="b">
             <default>true</default>
             <summary>Enable snap assist</summary>

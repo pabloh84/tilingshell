@@ -8,6 +8,12 @@ export enum ActivationKey {
     ALT,
     SUPER,
     RIGHT_BUTTON,
+    SHIFT,
+}
+
+export enum RmbActivationMode {
+    TOGGLE = 'toggle',
+    HOLD = 'hold',
 }
 
 export enum EdgeTilingMode {
@@ -93,6 +99,8 @@ export default class Settings {
     static KEY_SHOW_INDICATOR = 'show-indicator';
     static KEY_TILING_SYSTEM_ACTIVATION_KEY = 'tiling-system-activation-key';
     static KEY_TILING_SYSTEM_DEACTIVATION_KEY = 'tiling-system-deactivation-key';
+    static KEY_ENABLE_RMB_ACTIVATION = 'enable-rmb-activation';
+    static KEY_RMB_ACTIVATION_MODE = 'rmb-activation-mode';
     static KEY_SPAN_MULTIPLE_TILES_ACTIVATION_KEY = 'span-multiple-tiles-activation-key';
     static KEY_SPAN_MULTIPLE_TILES = 'enable-span-multiple-tiles';
     static KEY_RESTORE_WINDOW_ORIGINAL_SIZE = 'restore-window-original-size';
@@ -246,6 +254,25 @@ export default class Settings {
 
     static set TILING_SYSTEM_DEACTIVATION_KEY(val: ActivationKey) {
         set_activationkey(Settings.KEY_TILING_SYSTEM_DEACTIVATION_KEY, val);
+    }
+
+    static get ENABLE_RMB_ACTIVATION(): boolean {
+        return get_boolean(Settings.KEY_ENABLE_RMB_ACTIVATION);
+    }
+
+    static set ENABLE_RMB_ACTIVATION(val: boolean) {
+        set_boolean(Settings.KEY_ENABLE_RMB_ACTIVATION, val);
+    }
+
+    static get RMB_ACTIVATION_MODE(): RmbActivationMode {
+        return (
+            (get_string(Settings.KEY_RMB_ACTIVATION_MODE) as RmbActivationMode) ??
+            RmbActivationMode.TOGGLE
+        );
+    }
+
+    static set RMB_ACTIVATION_MODE(val: RmbActivationMode) {
+        set_string(Settings.KEY_RMB_ACTIVATION_MODE, val);
     }
 
     static get INNER_GAPS(): number {

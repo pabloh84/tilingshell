@@ -21,7 +21,11 @@
 
 import { Gtk, Adw, Gio, GLib, Gdk, GObject } from './gi/prefs';
 import Settings from './settings/settings';
-import { EdgeTilingMode, ActivationKey } from './settings/settings';
+import {
+    EdgeTilingMode,
+    ActivationKey,
+    RmbActivationMode,
+} from './settings/settings';
 import { logger } from './utils/logger';
 import { ExtensionPreferences } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 import Layout from './components/layout/Layout';
@@ -244,6 +248,30 @@ export default class TilingShellExtensionPreferences extends ExtensionPreference
             ),
         );
         behaviourGroup.add(enableTilingSystemRow);
+
+        const enableRmbActivationRow = this._buildSwitchRow(
+            Settings.KEY_ENABLE_RMB_ACTIVATION,
+            _('Activate with secondary mouse button'),
+            _(
+                'Activate the tiling system by clicking or holding the right mouse button while dragging a window',
+            ),
+        );
+        behaviourGroup.add(enableRmbActivationRow);
+
+        const rmbActivationModeRow = this._buildRmbModeDropDownRow(
+            _('Secondary mouse button activation mode'),
+            _(
+                'Toggle zone activation on click or hold down the button while dragging',
+            ),
+            Settings.RMB_ACTIVATION_MODE,
+            (val: RmbActivationMode) => (Settings.RMB_ACTIVATION_MODE = val),
+        );
+        Settings.bind(
+            Settings.KEY_ENABLE_RMB_ACTIVATION,
+            rmbActivationModeRow,
+            'sensitive',
+        );
+        behaviourGroup.add(rmbActivationModeRow);
 
         const tilingSystemDeactivationRow = this._buildDropDownRow(
             _('Tiling System deactivation key'),
@@ -1294,17 +1322,21 @@ export default class TilingShellExtensionPreferences extends ExtensionPreference
             ActivationKey.CTRL,
             ActivationKey.ALT,
             ActivationKey.SUPER,
+            ActivationKey.SHIFT,
             ActivationKey.RIGHT_BUTTON,
         ];
-        const labelFor = (k: ActivationKey): string =>
-            k === ActivationKey.RIGHT_BUTTON
-                ? _('Right Mouse Button')
-                : ActivationKey[k];
+        const labelFor = (k: ActivationKey): string => {
+            if (k === ActivationKey.RIGHT_BUTTON) return _('Right Mouse Button');
+            if (k === ActivationKey.SHIFT) return _('Shift');
+            return ActivationKey[k];
+        };
         activationKeys.forEach((k) => options.append(labelFor(k)));
         options.append(_('(None)'));
+        const selectedIndex = activationKeys.indexOf(initialValue);
         const dropdown = new Gtk.DropDown({
             model: options,
-            selected: initialValue,
+            selected:
+                selectedIndex === -1 ? activationKeys.length : selectedIndex,
         });
         dropdown.connect('notify::selected-item', (dd: Gtk.DropDown) => {
             const index = dd.get_selected();
@@ -1318,6 +1350,42 @@ export default class TilingShellExtensionPreferences extends ExtensionPreference
         dropdown.set_vexpand(false);
         dropdown.set_valign(Gtk.Align.CENTER);
         return dropdown;
+    }
+
+    _buildRmbModeDropDownRow(
+        title: string,
+        subtitle: string,
+        initialValue: RmbActivationMode,
+        onChange: (_: RmbActivationMode) => void,
+        styleClass?: string,
+    ): Adw.ActionRow {
+        const options = new Gtk.StringList();
+        const modes = [RmbActivationMode.TOGGLE, RmbActivationMode.HOLD];
+        options.append(_('Toggle on click'));
+        options.append(_('Hold down'));
+        const selectedIndex = modes.indexOf(initialValue);
+        const dropdown = new Gtk.DropDown({
+            model: options,
+            selected: selectedIndex === -1 ? 0 : selectedIndex,
+        });
+        dropdown.connect('notify::selected-item', (dd: Gtk.DropDown) => {
+            const index = dd.get_selected();
+            const selected =
+                index >= 0 && index < modes.length
+                    ? modes[index]
+                    : RmbActivationMode.TOGGLE;
+            onChange(selected);
+        });
+        if (styleClass) dropdown.add_css_class(styleClass);
+        dropdown.set_vexpand(false);
+        dropdown.set_valign(Gtk.Align.CENTER);
+        const adwRow = new Adw.ActionRow({
+            title,
+            subtitle,
+            activatableWidget: dropdown,
+        });
+        adwRow.add_suffix(dropdown);
+        return adwRow;
     }
 
     _buildLinkButton(label: string, uri: string): Gtk.Button {
